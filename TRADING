@@ -1,0 +1,77 @@
+import requests
+import pandas as pd
+import time
+
+# Function to get real-time EUR/USD data from Alpha Vantage API
+def fetch_real_time_data(api_key):
+    url = 'https://www.alphavantage.co/query'
+    params = {
+        'function': 'FX_INTRADAY',
+        'from_symbol': 'EUR',
+        'to_symbol': 'USD',
+        'interval': '1min',
+        'apikey': api_key
+    }
+    response = requests.get(url, params=params)
+    data = response.json()
+    
+    if "Time Series FX (1min)" in data:
+        time_series = data['Time Series FX (1min)']
+        df = pd.DataFrame(time_series).transpose()
+        df.columns = ['Open', 'High', 'Low', 'Close']
+        df = df.astype(float)
+        return df
+    else:
+        print("Error fetching data:", data)
+        return None
+
+# Function to calculate RSI
+def calculate_rsi(series, period=14):
+    delta = series.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+# Function to calculate MACD and Signal Line
+def calculate_macd(series, short_period=12, long_period=26, signal_period=9):
+    short_ema = series.ewm(span=short_period, adjust=False).mean()
+    long_ema = series.ewm(span=long_period, adjust=False).mean()
+    macd = short_ema - long_ema
+    signal = macd.ewm(span=signal_period, adjust=False).mean()
+    return macd, signal
+
+# Function to make a trading decision based on RSI and MACD
+def make_trading_decision(data):
+    latest_rsi = data['RSI'].iloc[-1]
+    latest_macd = data['MACD'].iloc[-1]
+    latest_signal = data['Signal'].iloc[-1]
+    
+    # Decision based on RSI and MACD
+    if latest_rsi < 30 and latest_macd > latest_signal:
+        return "Buy"
+    elif latest_rsi > 70 and latest_macd < latest_signal:
+        return "Sell"
+    else:
+        return "Hold"
+
+# Main function to run the trading bot for 25 minutes
+def run_trading_bot(api_key):
+    for _ in range(25):  # Run 25 times (for 25 minutes)
+        data = fetch_real_time_data(api_key)
+        if data is not None:
+            data['RSI'] = calculate_rsi(data['Close'])
+            data['MACD'], data['Signal'] = calculate_macd(data['Close'])
+            decision = make_trading_decision(data)
+            print(f"Trading Decision: {decision}")
+        else:
+            print("Failed to fetch data. Retrying...")
+        
+        # Wait for a minute before the next fetch
+        time.sleep(60)
+
+# Example usage
+if __name__ == "__main__":
+    api_key = "RY4F52WL33524X3Z"  # Your provided API key
+    run_trading_bot(api_key)
